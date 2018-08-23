@@ -169,7 +169,7 @@ class SpidValidator(object):
             req_type = 'AuthnRequest'
         elif self._action == 'logout':
             req_type = 'LogoutRequest'
-        issuer_name = data.get('{urn:oasis:names:tc:SAML:2.0:protocol}%s' % (req_type)).get('children').get('{urn:oasis:names:tc:SAML:2.0:assertion}Issuer').get('text')
+        issuer_name = data.get('{urn:oasis:names:tc:SAML:2.0:protocol}%s' % (req_type), {}).get('children', {}).get('{urn:oasis:names:tc:SAML:2.0:assertion}Issuer', {}).get('text')
         if issuer_name and issuer_name not in self._metadata.service_providers():
             raise UnknownEntityIDError(
                 'entity ID {} non registrato'.format(issuer_name)
@@ -190,7 +190,8 @@ class SpidValidator(object):
             ascss = []
         attribute_consuming_service_indexes = [str(el.get('index')) for el in atcss]
         assertion_consumer_service_indexes = [str(el.get('index')) for el in ascss]
-        receivers = data.get('{urn:oasis:names:tc:SAML:2.0:protocol}%s' % (req_type)).get('attrs').get('Destination')
+        assertion_consumer_service_urls = [str(el.get('location')) for el in ascss]
+        receivers = data.get('{urn:oasis:names:tc:SAML:2.0:protocol}%s' % (req_type), {}).get('attrs', {}).get('Destination')
 
         issuer = Schema(
             {
@@ -314,9 +315,20 @@ class SpidValidator(object):
                 and 'ProtocolBinding' in keys
                 and 'AssertionConsumerServiceIndex' not in keys
             ):
+                _errors = []
                 if attrs['ProtocolBinding'] != BINDING_HTTP_POST:
-                    raise Invalid(
-                        DEFAULT_VALUE_ERROR.format(BINDING_HTTP_POST), path=['ProtocolBinding'])
+                    _errors.append(
+                    Invalid(
+                        DEFAULT_VALUE_ERROR.format(BINDING_HTTP_POST), path=['ProtocolBinding']
+                    )
+                    )
+                if attrs['AssertionConsumerServiceURL'] not in assertion_consumer_service_urls:
+                    _errors.append(
+                        Invalid(
+                        DEFAULT_VALUE_ERROR.format(assertion_consumer_service_urls), path=['AssertionConsumerServiceURL'])
+                    )
+                if _errors:
+                    raise MultipleInvalid(errors=_errors)
                 return attrs
 
             elif (
